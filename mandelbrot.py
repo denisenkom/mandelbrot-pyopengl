@@ -8,25 +8,28 @@ vertex_shader_src = '''
 layout(location = 0) in vec3 vertexPosition_modelspace;
 
 // Output data ; will be interpolated for each fragment.
-out vec3 fragmentColor;
+out vec2 fragmentCoord;
 
 void main(){
   gl_Position = vec4(vertexPosition_modelspace, 1);
+  fragmentCoord = vec2(vertexPosition_modelspace.x, vertexPosition_modelspace.y);
 }
 '''
 
 fragment_shader_src = '''
 #version 450 core
 
+in vec2 fragmentCoord;
 out vec3 color;
+
+uniform dmat3 transform;
 
 int max_iters = 256;
 
 void main(){
-  float x = (gl_FragCoord.x - 1920) / 800.0;
-  float y = (gl_FragCoord.y - 1080) / 800.0;
-    double cx = x;
-    double cy = y;
+    dvec3 pointCoord = vec3(fragmentCoord.x, fragmentCoord.y, 1) * transform;
+    double cx = pointCoord.x;
+    double cy = pointCoord.y;
     int iter = 0;
     double zx = 0;
     double zy = 0;
@@ -35,14 +38,14 @@ void main(){
         double nzy = 2 * zx * zy + cy;
         zx = nzx;
         zy = nzy;
-        if (sqrt(zx*zx + zy*zy) > 2.0) {
+        if (zx*zx + zy*zy > 4.0) {
             break;
         }
         iter += 1;
     }
   int iterations = iter;
   float br = 1 - iterations * 1.0 / max_iters;
-  color = vec3(br, zx/2, zy/2);
+  color = vec3(br, br, br);//zx/2, zy/2);
 }
 '''
 
@@ -99,7 +102,11 @@ def main():
     glfw.window_hint(glfw.OPENGL_FORWARD_COMPAT, True)
     glfw.window_hint(glfw.OPENGL_PROFILE, glfw.OPENGL_CORE_PROFILE)
 
-    window = glfw.create_window(1920*2, 1080*2, "Hello World", None, None)
+    width = 1920
+    height = 1080
+    aspect = 1.0 * width / height
+
+    window = glfw.create_window(width, height, "Hello World", None, None)
     if not window:
         glfw.terminate()
         return
@@ -115,13 +122,13 @@ def main():
 
     program = make_program([vertex_shader, fragment_shader])
 
-    vert_values = numpy.array([-1, -1, 0,
-                               1, -1, 0,
-                               -1, 1, 0,
-                               -1, 1, 0,
-                               1, -1, 0,
-                               1, 1, 0,
-                               ], dtype='float32')
+    vert_values = numpy.array([-1, -1 * aspect, 0,
+                               1, -1 * aspect, 0,
+                               -1, 1 * aspect, 0,
+                               -1, 1 * aspect, 0,
+                               1, -1 * aspect, 0,
+                               1, 1 * aspect, 0,
+                               ], dtype='float64')
 
     # creating vertex array
     vert_array = gl.glGenVertexArrays(1)
@@ -138,23 +145,65 @@ def main():
     # setup coordinate buffer
     gl.glEnableVertexAttribArray(0)
     gl.glBindBuffer(gl.GL_ARRAY_BUFFER, vert_buffer)
-    gl.glVertexAttribPointer(0, 3, gl.GL_FLOAT, gl.GL_FALSE, 0, None)
+    gl.glVertexAttribPointer(0, 3, gl.GL_DOUBLE, gl.GL_FALSE, 0, None)
+
+    # setup uniforms for fragment shader
+    transform_loc = gl.glGetUniformLocation(program, 'transform')
 
     # setup color buffer
     # gl.glEnableVertexAttribArray(1)
     # gl.glBindBuffer(gl.GL_ARRAY_BUFFER, color_buffer)
     # gl.glVertexAttribPointer(1, 3, gl.GL_FLOAT, gl.GL_FALSE, 0, None)
 
-    gl.glDrawArrays(gl.GL_TRIANGLES, 0, int(len(vert_values) / 3))
+    state = {
+        'zoom': 1,
+        'pos_x': 0,
+        'pos_y': 0,
+    }
 
-    # Swap front and back buffers
-    glfw.swap_buffers(window)
+    def char_callback(window, char):
+        ch = chr(char)
+        change = False
+        if ch == '-':
+            state['zoom'] *= 1.1
+            change = True
+        elif ch == '+':
+            state['zoom'] *= 0.99
+            change = True
+        if change:
+            print('Current zoom:', state['zoom'])
+
+    def key_callback(window, key, scancode, action, mods):
+        if action in (glfw.PRESS, glfw.REPEAT):
+            if key == glfw.KEY_UP:
+                state['pos_y'] += state['zoom'] * 0.01
+            elif key == glfw.KEY_DOWN:
+                state['pos_y'] -= state['zoom'] * 0.01
+            elif key == glfw.KEY_RIGHT:
+                state['pos_x'] += state['zoom'] * 0.01
+            elif key == glfw.KEY_LEFT:
+                state['pos_x'] -= state['zoom'] * 0.01
+
+
+    glfw.set_char_callback(window, char_callback)
+    glfw.set_key_callback(window, key_callback)
+
+    print("use +/- to zoom in/out")
+    print("use arrows to pan")
 
     while not glfw.window_should_close(window):
-        # model_mat = transformations.identity_matrix()
+        zoom = state['zoom']
+        pos_x = state['pos_x']
+        pos_y = state['pos_y']
+        gl.glUniformMatrix3dv(transform_loc, 1, False,
+                              numpy.array([aspect * zoom, 0, pos_x, 0, 1 * zoom, pos_y, 0, 0, 1 * zoom], dtype='float64'))
 
-        # Poll for and process events
-        glfw.poll_events()
+        gl.glDrawArrays(gl.GL_TRIANGLES, 0, int(len(vert_values) / 3))
+
+        # Swap front and back buffers
+        glfw.swap_buffers(window)
+
+        glfw.wait_events()
 
     glfw.terminate()
 
