@@ -1,0 +1,163 @@
+import glfw
+import OpenGL.GL as gl
+import numpy
+
+
+vertex_shader_src = '''
+#version 450 core
+layout(location = 0) in vec3 vertexPosition_modelspace;
+
+// Output data ; will be interpolated for each fragment.
+out vec3 fragmentColor;
+
+void main(){
+  gl_Position = vec4(vertexPosition_modelspace, 1);
+}
+'''
+
+fragment_shader_src = '''
+#version 450 core
+
+out vec3 color;
+
+int max_iters = 256;
+
+void main(){
+  float x = (gl_FragCoord.x - 1920) / 800.0;
+  float y = (gl_FragCoord.y - 1080) / 800.0;
+    double cx = x;
+    double cy = y;
+    int iter = 0;
+    double zx = 0;
+    double zy = 0;
+    while (iter < max_iters) {
+        double nzx = zx * zx - zy * zy + cx;
+        double nzy = 2 * zx * zy + cy;
+        zx = nzx;
+        zy = nzy;
+        if (sqrt(zx*zx + zy*zy) > 2.0) {
+            break;
+        }
+        iter += 1;
+    }
+  int iterations = iter;
+  float br = 1 - iterations * 1.0 / max_iters;
+  color = vec3(br, zx/2, zy/2);
+}
+'''
+
+
+def make_shader(shader_type, src):
+    shader = gl.glCreateShader(shader_type)
+    gl.glShaderSource(shader, src)
+    gl.glCompileShader(shader)
+    status = gl.glGetShaderiv(shader, gl.GL_COMPILE_STATUS)
+    if status == gl.GL_FALSE:
+        # Note that getting the error log is much simpler in Python than in C/C++
+        # and does not require explicit handling of the string buffer
+        strInfoLog = gl.glGetShaderInfoLog(shader).decode('ascii')
+        strShaderType = ""
+        if shader_type is gl.GL_VERTEX_SHADER:
+            strShaderType = "vertex"
+        elif shader_type is gl.GL_GEOMETRY_SHADER:
+            strShaderType = "geometry"
+        elif shader_type is gl.GL_FRAGMENT_SHADER:
+            strShaderType = "fragment"
+
+        raise Exception("Compilation failure for " + strShaderType + " shader:\n" + strInfoLog)
+
+    return shader
+
+
+def make_program(shader_list):
+    program = gl.glCreateProgram()
+
+    for shader in shader_list:
+        gl.glAttachShader(program, shader)
+
+    gl.glLinkProgram(program)
+
+    status = gl.glGetProgramiv(program, gl.GL_LINK_STATUS)
+    if status == gl.GL_FALSE:
+        # Note that getting the error log is much simpler in Python than in C/C++
+        # and does not require explicit handling of the string buffer
+        strInfoLog = gl.glGetProgramInfoLog(program)
+        raise Exception("Linker failure: \n" + strInfoLog)
+
+    for shader in shader_list:
+        gl.glDetachShader(program, shader)
+
+    return program
+
+
+def main():
+    if not glfw.init():
+        return
+
+    glfw.window_hint(glfw.CONTEXT_VERSION_MAJOR, 4)
+    glfw.window_hint(glfw.CONTEXT_VERSION_MINOR, 1)
+    glfw.window_hint(glfw.OPENGL_FORWARD_COMPAT, True)
+    glfw.window_hint(glfw.OPENGL_PROFILE, glfw.OPENGL_CORE_PROFILE)
+
+    window = glfw.create_window(1920*2, 1080*2, "Hello World", None, None)
+    if not window:
+        glfw.terminate()
+        return
+
+    glfw.make_context_current(window)
+
+    # print(f"opengl version: {gl.glGetString(gl.GL_VERSION).decode('ascii')}")
+    # print(f"opengl vendor: {gl.glGetString(gl.GL_VENDOR).decode('ascii')}")
+    # print(f"opengl renderer: {gl.glGetString(gl.GL_RENDERER).decode('ascii')}")
+
+    vertex_shader = make_shader(gl.GL_VERTEX_SHADER, vertex_shader_src)
+    fragment_shader = make_shader(gl.GL_FRAGMENT_SHADER, fragment_shader_src)
+
+    program = make_program([vertex_shader, fragment_shader])
+
+    vert_values = numpy.array([-1, -1, 0,
+                               1, -1, 0,
+                               -1, 1, 0,
+                               -1, 1, 0,
+                               1, -1, 0,
+                               1, 1, 0,
+                               ], dtype='float32')
+
+    # creating vertex array
+    vert_array = gl.glGenVertexArrays(1)
+    gl.glBindVertexArray(vert_array)
+
+    vert_buffer = gl.glGenBuffers(1)
+    gl.glBindBuffer(gl.GL_ARRAY_BUFFER, vert_buffer)
+    gl.glBufferData(gl.GL_ARRAY_BUFFER, vert_values, gl.GL_STATIC_DRAW)
+
+    gl.glClearColor(0, 0, 0, 0)
+    gl.glClear(gl.GL_COLOR_BUFFER_BIT)
+    gl.glUseProgram(program)
+
+    # setup coordinate buffer
+    gl.glEnableVertexAttribArray(0)
+    gl.glBindBuffer(gl.GL_ARRAY_BUFFER, vert_buffer)
+    gl.glVertexAttribPointer(0, 3, gl.GL_FLOAT, gl.GL_FALSE, 0, None)
+
+    # setup color buffer
+    # gl.glEnableVertexAttribArray(1)
+    # gl.glBindBuffer(gl.GL_ARRAY_BUFFER, color_buffer)
+    # gl.glVertexAttribPointer(1, 3, gl.GL_FLOAT, gl.GL_FALSE, 0, None)
+
+    gl.glDrawArrays(gl.GL_TRIANGLES, 0, int(len(vert_values) / 3))
+
+    # Swap front and back buffers
+    glfw.swap_buffers(window)
+
+    while not glfw.window_should_close(window):
+        # model_mat = transformations.identity_matrix()
+
+        # Poll for and process events
+        glfw.poll_events()
+
+    glfw.terminate()
+
+
+if __name__ == '__main__':
+    main()
