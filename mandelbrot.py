@@ -4,7 +4,7 @@ import numpy
 
 
 vertex_shader_src = '''
-#version 450 core
+#version 410 core
 layout(location = 0) in vec3 vertexPosition_modelspace;
 
 // Output data ; will be interpolated for each fragment.
@@ -17,17 +17,40 @@ void main(){
 '''
 
 fragment_shader_src = '''
-#version 450 core
+#version 410 core
 
 in vec2 fragmentCoord;
 out vec3 color;
 
 uniform dmat3 transform;
 
-int max_iters = 256;
+int max_iters = 100;
+
+
+vec3 hsv2rgb(vec3 c)
+{
+    vec4 K = vec4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
+    vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
+    return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
+}
+
+
+vec3 map_color(int i, float r, float c) {
+    float di = i;
+    float zn = sqrt(r + c);
+    float hue = di + 1 - log(log(abs(zn))) / log(2);
+    hue = 0.95 + 20 * hue;
+    while (hue > 360)
+        hue -= 360;
+    while (hue < 0)
+        hue += 360;
+    return hsv2rgb(vec3(hue, 0.8, 1.0*i/max_iters));
+}
+
 
 void main(){
-    dvec3 pointCoord = vec3(fragmentCoord.x, fragmentCoord.y, 1) * transform;
+    dvec3 pointCoord = dvec3(fragmentCoord.xy, 1);
+    pointCoord *= transform;
     double cx = pointCoord.x;
     double cy = pointCoord.y;
     int iter = 0;
@@ -43,9 +66,11 @@ void main(){
         }
         iter += 1;
     }
-  int iterations = iter;
-  float br = 1 - iterations * 1.0 / max_iters;
-  color = vec3(br, br, br);//zx/2, zy/2);
+    if (iter == max_iters) {
+        color = vec3(0,0,0);
+    } else {
+        color = map_color(iter, float(zx*zx), float(zy*zy));
+    }
 }
 '''
 
@@ -157,8 +182,8 @@ def main():
 
     state = {
         'zoom': 1,
-        'pos_x': 0,
-        'pos_y': 0,
+        'pos_x': -0.7600188805884333,
+        'pos_y': 0.07995161408022217,
     }
 
     def char_callback(window, char):
@@ -166,23 +191,31 @@ def main():
         change = False
         if ch == '-':
             state['zoom'] *= 1.1
+            state['zoom'] = min(10, state['zoom'])
             change = True
-        elif ch == '+':
-            state['zoom'] *= 0.99
+        elif ch in ('+', '='):
+            state['zoom'] *= 0.9
             change = True
         if change:
             print('Current zoom:', state['zoom'])
 
     def key_callback(window, key, scancode, action, mods):
+        change = False
         if action in (glfw.PRESS, glfw.REPEAT):
             if key == glfw.KEY_UP:
-                state['pos_y'] += state['zoom'] * 0.01
+                state['pos_y'] += state['zoom'] * 0.02
+                change = True
             elif key == glfw.KEY_DOWN:
-                state['pos_y'] -= state['zoom'] * 0.01
+                state['pos_y'] -= state['zoom'] * 0.02
+                change = True
             elif key == glfw.KEY_RIGHT:
-                state['pos_x'] += state['zoom'] * 0.01
+                state['pos_x'] += state['zoom'] * 0.02
+                change = True
             elif key == glfw.KEY_LEFT:
-                state['pos_x'] -= state['zoom'] * 0.01
+                state['pos_x'] -= state['zoom'] * 0.02
+                change = True
+        if change:
+            print('Current center:', state['pos_x'], state['pos_y'])
 
 
     glfw.set_char_callback(window, char_callback)
