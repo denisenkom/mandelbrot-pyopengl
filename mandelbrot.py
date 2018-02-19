@@ -24,7 +24,7 @@ out vec3 color;
 
 uniform dmat3 transform;
 
-int max_iters = 100;
+int max_iters = 1000;
 
 
 vec3 hsv2rgb(vec3 c)
@@ -38,13 +38,8 @@ vec3 hsv2rgb(vec3 c)
 vec3 map_color(int i, float r, float c) {
     float di = i;
     float zn = sqrt(r + c);
-    float hue = di + 1 - log(log(abs(zn))) / log(2);
-    hue = 0.95 + 20 * hue;
-    while (hue > 360)
-        hue -= 360;
-    while (hue < 0)
-        hue += 360;
-    return hsv2rgb(vec3(hue, 0.8, 1.0*i/max_iters));
+    float hue = (di + 1 - log(log2(abs(zn))))/max_iters;
+    return hsv2rgb(vec3(hue, 0.8, 1));
 }
 
 
@@ -126,6 +121,7 @@ def main():
     glfw.window_hint(glfw.CONTEXT_VERSION_MINOR, 1)
     glfw.window_hint(glfw.OPENGL_FORWARD_COMPAT, True)
     glfw.window_hint(glfw.OPENGL_PROFILE, glfw.OPENGL_CORE_PROFILE)
+    glfw.window_hint(glfw.SAMPLES, 16)
 
     width = 1920
     height = 1080
@@ -182,8 +178,8 @@ def main():
 
     state = {
         'zoom': 1,
-        'pos_x': -0.7600188805884333,
-        'pos_y': 0.07995161408022217,
+        'pos_x': -0.7600189058857209,
+        'pos_y': 0.0799516080512771,
     }
 
     def char_callback(window, char):
@@ -220,6 +216,7 @@ def main():
 
     glfw.set_char_callback(window, char_callback)
     glfw.set_key_callback(window, key_callback)
+    time_before = glfw.get_time()
 
     print("use +/- to zoom in/out")
     print("use arrows to pan")
@@ -232,6 +229,9 @@ def main():
                               numpy.array([aspect * zoom, 0, pos_x, 0, 1 * zoom, pos_y, 0, 0, 1 * zoom], dtype='float64'))
 
         gl.glDrawArrays(gl.GL_TRIANGLES, 0, int(len(vert_values) / 3))
+        time = glfw.get_time()
+        print("frame render time", time - time_before)
+        time_before = time
 
         # Swap front and back buffers
         glfw.swap_buffers(window)
