@@ -24,7 +24,7 @@ out vec3 color;
 
 uniform dmat3 transform;
 
-int max_iters = 1000;
+uniform int max_iters = 1000;
 
 
 vec3 hsv2rgb(vec3 c)
@@ -121,6 +121,7 @@ def main():
     glfw.window_hint(glfw.CONTEXT_VERSION_MINOR, 1)
     glfw.window_hint(glfw.OPENGL_FORWARD_COMPAT, True)
     glfw.window_hint(glfw.OPENGL_PROFILE, glfw.OPENGL_CORE_PROFILE)
+    glfw.window_hint(glfw.DOUBLEBUFFER, 0)
     glfw.window_hint(glfw.SAMPLES, 16)
 
     width = 1920
@@ -170,6 +171,7 @@ def main():
 
     # setup uniforms for fragment shader
     transform_loc = gl.glGetUniformLocation(program, 'transform')
+    max_iters_loc = gl.glGetUniformLocation(program, 'max_iters')
 
     # setup color buffer
     # gl.glEnableVertexAttribArray(1)
@@ -180,6 +182,7 @@ def main():
         'zoom': 1,
         'pos_x': -0.7600189058857209,
         'pos_y': 0.0799516080512771,
+        'max_iters': 100,
     }
 
     def char_callback(window, char):
@@ -192,8 +195,15 @@ def main():
         elif ch in ('+', '='):
             state['zoom'] *= 0.9
             change = True
+        elif ch == ']':
+            state['max_iters'] *= 1.1
+            change = True
+        elif ch == '[':
+            state['max_iters'] *= 0.9
+            change = True
         if change:
             print('Current zoom:', state['zoom'])
+            print('Current max_iters:', state['max_iters'])
 
     def key_callback(window, key, scancode, action, mods):
         change = False
@@ -219,6 +229,7 @@ def main():
     time_before = glfw.get_time()
 
     print("use +/- to zoom in/out")
+    print("use [/] to increase/decrease max_iters")
     print("use arrows to pan")
 
     while not glfw.window_should_close(window):
@@ -227,14 +238,14 @@ def main():
         pos_y = state['pos_y']
         gl.glUniformMatrix3dv(transform_loc, 1, False,
                               numpy.array([aspect * zoom, 0, pos_x, 0, 1 * zoom, pos_y, 0, 0, 1 * zoom], dtype='float64'))
+        gl.glUniform1i(max_iters_loc, int(state['max_iters']))
 
         gl.glDrawArrays(gl.GL_TRIANGLES, 0, int(len(vert_values) / 3))
         time = glfw.get_time()
         print("frame render time", time - time_before)
         time_before = time
 
-        # Swap front and back buffers
-        glfw.swap_buffers(window)
+        gl.glFlush()
 
         glfw.wait_events()
 
