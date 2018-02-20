@@ -128,7 +128,7 @@ def main():
     height = 1080
     aspect = 1.0 * width / height
 
-    window = glfw.create_window(width, height, "Hello World", None, None)
+    window = glfw.create_window(width, height, "Mandelbrot", None, None)
     if not window:
         glfw.terminate()
         return
